@@ -5,7 +5,7 @@ AI security controls and governance patterns mapped directly to the [OWASP Top 1
 
 Built for teams deploying AI in regulated environments: financial services, healthcare, legal, and enterprise.
 
-> **Build status:** Reference document, prompt library, and governance documents complete. Workflows in development. See the Coverage table below for current status.
+> **Build status:** Complete. All 10 OWASP LLM risks covered across 5 workflows, 6 prompt library entries, and 2 governance documents.
 
 ---
 
@@ -13,16 +13,16 @@ Built for teams deploying AI in regulated environments: financial services, heal
 
 | Risk | Name | Artifact | Status |
 |------|------|----------|--------|
-| LLM01 | Prompt Injection | Workflow + Prompt | Prompt ✓ · Workflow in development |
-| LLM02 | Sensitive Information Disclosure | Workflow + Prompt | Prompt ✓ · Workflow in development |
+| LLM01 | Prompt Injection | Workflow + Prompt | ✓ Done |
+| LLM02 | Sensitive Information Disclosure | Workflow + Prompt | ✓ Done |
 | LLM03 | Supply Chain | Governance | ✓ Done |
-| LLM04 | Data and Model Poisoning | Workflow | In development |
+| LLM04 | Data and Model Poisoning | Workflow | ✓ Done |
 | LLM05 | Improper Output Handling | Prompt | ✓ Done |
-| LLM06 | Excessive Agency | Workflow + Prompt | Prompt ✓ · Workflow in development |
+| LLM06 | Excessive Agency | Workflow + Prompt | ✓ Done |
 | LLM07 | System Prompt Leakage | Governance + Prompt | ✓ Done |
-| LLM08 | Vector and Embedding Weaknesses | Workflow | In development |
+| LLM08 | Vector and Embedding Weaknesses | Workflow | ✓ Done |
 | LLM09 | Misinformation | Prompt | ✓ Done |
-| LLM10 | Unbounded Consumption | Workflow | In development |
+| LLM10 | Unbounded Consumption | Workflow | ✓ Done |
 
 ### Why LLM04 and LLM08 have no prompt library entry
 
