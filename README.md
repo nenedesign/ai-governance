@@ -54,12 +54,17 @@ ai-governance/
 ├── governance/                         # Model intake and audit documents
 │   ├── llm03-model-intake-assessment.md
 │   └── llm07-system-prompt-audit.md
-└── workflows/                          # Runnable n8n workflow JSON + docs
-    ├── llm01-prompt-injection-scanner/
-    ├── llm02-pii-detector/
-    ├── llm04-llm08-rag-security-pipeline/
-    ├── llm06-hitl-approval-gate/
-    └── llm10-rate-limiter/
+├── workflows/                          # Runnable n8n workflow JSON + docs
+│   ├── llm01-prompt-injection-scanner/
+│   ├── llm02-pii-detector/
+│   ├── llm04-llm08-rag-security-pipeline/
+│   ├── llm06-hitl-approval-gate/
+│   └── llm10-rate-limiter/
+└── compliance/                         # Regulatory framework implementations
+    ├── pci-dss/                        # PCI-DSS v4.0 — cardholder data protection
+    ├── soc2/                           # SOC 2 Type II — AI audit log pipeline
+    ├── sec-finra/                      # SEC/FINRA — investment advice guardrails
+    └── osfi-e23/                       # OSFI E-23 — model risk management (Canada)
 ```
 
 ---
