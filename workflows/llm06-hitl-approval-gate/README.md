@@ -12,6 +12,20 @@ Enforces a human-in-the-loop approval step for high-impact agentic actions befor
 
 This pattern enforces the principle from the [LLM06 prompt pattern](../../prompt-library/llm06-minimal-agency.md): confirmation for irreversible actions must be enforced at the application layer, not by prompt instructions the model can be argued out of.
 
+```mermaid
+flowchart LR
+    A[Webhook] --> B[Normalize Fields]
+    B --> C[Classify Action Severity\nlow: read/search/get\nhigh: delete/write/send]
+    C --> D{Requires\nApproval?}
+    D -- Low impact --> E[Execute Action Directly]
+    E --> F[200 Executed]
+    D -- High impact --> G[Slack Approval Request\nsendAndWait · 30 min timeout]
+    G --> H{Approved?}
+    H -- Yes --> I[Execute Approved Action]
+    I --> J[200 Approved and Executed]
+    H -- No / Timeout --> K[403 Action Declined]
+```
+
 ---
 
 ## Who it's for

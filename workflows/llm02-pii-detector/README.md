@@ -12,6 +12,13 @@ Scans raw LLM output for personally identifiable information before the response
 
 This is a post-inference control: it intercepts the model's response after generation and before delivery. A model cannot reliably self-censor PII — it may reproduce sensitive patterns from its training data or context window regardless of prompt instructions.
 
+```mermaid
+flowchart LR
+    A[Webhook] --> B[Normalize Fields]
+    B --> C[Detect and Redact PII\n7 categories · REDACTED:category tokens]
+    C --> D[200 OK\nX-PII-Scan · X-Redaction-Count headers\nsanitized_output + redaction_summary]
+```
+
 ---
 
 ## Who it's for

@@ -12,6 +12,16 @@ Scans incoming user prompts for injection attack patterns before they reach the 
 
 This is a pre-inference control: the scanner runs before the model sees any input. A model cannot protect itself from injection at inference time — that decision must be made upstream.
 
+```mermaid
+flowchart LR
+    A[Webhook] --> B[Normalize Fields]
+    B --> C[Scan for Injection Patterns\n21 patterns · 5 categories · risk score]
+    C --> D{Blocked?\nscore ≥ 2}
+    D -- Yes --> E[400 Bad Request\nX-Injection-Scan: blocked]
+    D -- No --> F[Forward to LLM API]
+    F --> G[200 OK\nX-Injection-Scan: passed]
+```
+
 ---
 
 ## Who it's for

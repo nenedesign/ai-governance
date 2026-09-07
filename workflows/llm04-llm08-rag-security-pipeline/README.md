@@ -18,6 +18,18 @@ The document source is checked against a configurable domain allowlist. The cont
 **Stage 2 — Sanitization and Storage (LLM08: Embedding Weaknesses):**  
 Accepted documents are cleaned before embedding: HTML tags and script blocks are stripped, control characters are removed, whitespace is normalized, and oversized content is truncated. The sanitized content is sent to an embedding API, and the resulting vector is upserted into a vector store with full audit metadata (source, ingestion timestamp, sanitization log).
 
+```mermaid
+flowchart LR
+    A[Webhook] --> B[Normalize Fields]
+    B --> C[Validate Source\n+ Scan for Poisoning\ndomain allowlist · 5 adversarial patterns]
+    C --> D{Source Valid?}
+    D -- No --> E[403 Rejected\nrisk_flags returned]
+    D -- Yes --> F[Sanitize Document\nstrip HTML · remove control chars · truncate]
+    F --> G[Generate Embedding\nEmbedding API]
+    G --> H[Store in Vector Store\nwith audit metadata]
+    H --> I[200 Ingested\nsanitization_log returned]
+```
+
 ---
 
 ## Why LLM04 and LLM08 share one workflow

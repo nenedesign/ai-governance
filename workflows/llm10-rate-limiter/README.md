@@ -12,6 +12,16 @@ Enforces per-user sliding-window rate limits on LLM API calls before they reach 
 
 This is an application-layer control, enforced in the workflow before the model is ever invoked. A model cannot rate-limit itself.
 
+```mermaid
+flowchart LR
+    A[Webhook] --> B[Normalize Fields]
+    B --> C[Check Rate Limit\nsliding window · 10 req / 60 sec per user_id\nstate in workflow staticData]
+    C --> D{Within Limit?}
+    D -- Over limit --> E[429 Too Many Requests\nRetry-After header]
+    D -- Within limit --> F[Call LLM API]
+    F --> G[200 OK\nX-RateLimit-Limit · X-RateLimit-Remaining]
+```
+
 ---
 
 ## Who it's for
