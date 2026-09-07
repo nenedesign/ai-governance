@@ -1,0 +1,335 @@
+{
+  "updatedAt": "2026-09-06T14:26:12.281Z",
+  "createdAt": "2026-09-06T14:26:12.281Z",
+  "id": "mHtReFknAYieIYc9",
+  "name": "LLM10: Rate Limiter",
+  "description": "Per-user sliding-window rate limiter for LLM API calls. Enforces request limits and returns 429 with Retry-After headers when exceeded. Implements OWASP LLM10:2025 Unbounded Consumption controls.",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "c9270053-61a1-4fb6-997c-044320c8c1ee",
+      "name": "Sticky Note 6aac1840",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        560,
+        256
+      ],
+      "parameters": {
+        "content": "## LLM10: Unbounded Consumption \u2014 Rate Limiter\n\nEnforces per-user sliding-window rate limits on LLM API calls to prevent unbounded consumption (OWASP LLM10:2025).\n\n**Flow:**\n1. Webhook receives POST with `user_id` and `prompt`\n2. Sliding window counter checks requests in the past 60 seconds per user\n3. Within limit: forwards to LLM API, returns response with rate limit headers\n4. Over limit: returns 429 with `Retry-After` header\n\nRate limit state uses `$workflow.staticData` \u2014 persists across executions within this workflow instance.",
+        "color": 2
+      }
+    },
+    {
+      "id": "98979a52-51a6-4685-9658-74a6cd11384b",
+      "name": "Sticky Note 9022ccc7",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        560,
+        256
+      ],
+      "parameters": {
+        "content": "## Prerequisites\n\n1. Replace the URL placeholder in \"Call LLM API\" with your endpoint\n2. Create an n8n credential for your LLM API key (Bearer token)\n3. Link the credential in \"Call LLM API\"\n4. Activate the workflow\n5. Test: POST to `/webhook/llm-rate-limiter` with body `{\"user_id\":\"test\",\"prompt\":\"Hello\"}`",
+        "color": 3
+      }
+    },
+    {
+      "id": "10168a70-9199-4f0e-95f8-a362b5cda091",
+      "name": "Sticky Note 6aa0af67",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        560,
+        256
+      ],
+      "parameters": {
+        "content": "## Rate Limit Configuration\n\nEdit these constants at the top of \"Check Rate Limit\":\n\n`WINDOW_SECONDS = 60` \u2014 rolling window duration\n`MAX_REQUESTS = 10` \u2014 max requests per user per window\n\nFor production: replace `$workflow.staticData` with a Redis or Postgres node to share state across workflow instances.",
+        "color": 1
+      }
+    },
+    {
+      "id": "04620b58-0c85-4b15-acf2-11f350893251",
+      "name": "Receive LLM Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        96
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "llm-rate-limiter",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "83f18d70-855f-49a3-8a94-54c623764a60"
+    },
+    {
+      "id": "9ae857fb-9746-4029-a0c9-af4d00589171",
+      "name": "Normalize Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        96
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "uid",
+              "name": "user_id",
+              "value": "={{ $json.body?.user_id ?? $json.user_id ?? \"anonymous\" }}",
+              "type": "string"
+            },
+            {
+              "id": "pmt",
+              "name": "prompt",
+              "value": "={{ $json.body?.prompt ?? $json.prompt ?? \"\" }}",
+              "type": "string"
+            },
+            {
+              "id": "sid",
+              "name": "session_id",
+              "value": "={{ $json.body?.session_id ?? $json.session_id ?? \"\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "aae99284-0689-441c-af41-c4a0f5ff1662",
+      "name": "Check Rate Limit",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        96
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const WINDOW_SECONDS = 60;\nconst MAX_REQUESTS = 10;\nconst userId = $input.first().json.user_id || \"anonymous\";\nconst prompt = $input.first().json.prompt;\nconst sessionId = $input.first().json.session_id;\nconst now = Date.now();\nconst windowStart = now - (WINDOW_SECONDS * 1000);\nconst state = $workflow.staticData;\nif (!state.rateLimits) state.rateLimits = {};\nif (!state.rateLimits[userId]) state.rateLimits[userId] = { timestamps: [] };\nconst userRecord = state.rateLimits[userId];\nuserRecord.timestamps = userRecord.timestamps.filter(ts => ts > windowStart);\nconst requestCount = userRecord.timestamps.length;\nconst allowed = requestCount < MAX_REQUESTS;\nconst remaining = Math.max(0, MAX_REQUESTS - requestCount);\nconst oldestTs = userRecord.timestamps.length > 0 ? userRecord.timestamps[0] : now;\nconst resetAt = new Date(oldestTs + (WINDOW_SECONDS * 1000)).toISOString();\nconst retryAfterSeconds = allowed ? 0 : Math.ceil((oldestTs + (WINDOW_SECONDS * 1000) - now) / 1000);\nif (allowed) userRecord.timestamps.push(now);\nreturn [{ json: {\n  user_id: userId,\n  prompt: prompt,\n  session_id: sessionId,\n  allowed: allowed,\n  requests_made: requestCount + (allowed ? 1 : 0),\n  requests_remaining: allowed ? remaining - 1 : remaining,\n  limit: MAX_REQUESTS,\n  window_seconds: WINDOW_SECONDS,\n  reset_at: resetAt,\n  retry_after_seconds: retryAfterSeconds\n} }];"
+      }
+    },
+    {
+      "id": "3efd27bf-bdcc-4edb-9533-b32ba50b4cc0",
+      "name": "Rate Limit Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.allowed }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "efd1aff0-5c91-4859-a7bd-45eaca99e603",
+      "name": "Call LLM API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        896,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__LLM API endpoint \u2014 e.g. https://api.anthropic.com/v1/messages__>",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBearerAuth",
+        "sendHeaders": true,
+        "specifyHeaders": "keypair",
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"claude-3-5-haiku-20241022\", \"max_tokens\": 1024, \"messages\": [{ \"role\": \"user\", \"content\": $json.prompt }] } }}"
+      }
+    },
+    {
+      "id": "294ddbf3-d082-47cf-8141-3b2ea50a8d0b",
+      "name": "Respond: 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1120,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"response\": $json.content[0].text, \"user_id\": $(\"Check Rate Limit\").item.json.user_id, \"requests_remaining\": $(\"Check Rate Limit\").item.json.requests_remaining, \"reset_at\": $(\"Check Rate Limit\").item.json.reset_at } }}",
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-RateLimit-Limit",
+                "value": "={{ String($(\"Check Rate Limit\").item.json.limit) }}"
+              },
+              {
+                "name": "X-RateLimit-Remaining",
+                "value": "={{ String($(\"Check Rate Limit\").item.json.requests_remaining) }}"
+              },
+              {
+                "name": "X-RateLimit-Reset",
+                "value": "={{ $(\"Check Rate Limit\").item.json.reset_at }}"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "e7d00f89-bae4-4550-a55f-17eab8b3c9e7",
+      "name": "Respond: 429 Too Many Requests",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"error\": \"rate_limit_exceeded\", \"message\": \"Rate limit of \" + $json.limit + \" requests per \" + $json.window_seconds + \" seconds exceeded.\", \"retry_after_seconds\": $json.retry_after_seconds, \"reset_at\": $json.reset_at } }}",
+        "options": {
+          "responseCode": 429,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Retry-After",
+                "value": "={{ String($json.retry_after_seconds) }}"
+              },
+              {
+                "name": "X-RateLimit-Limit",
+                "value": "={{ String($json.limit) }}"
+              },
+              {
+                "name": "X-RateLimit-Remaining",
+                "value": "0"
+              },
+              {
+                "name": "X-RateLimit-Reset",
+                "value": "={{ $json.reset_at }}"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive LLM Request": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request": {
+      "main": [
+        [
+          {
+            "node": "Check Rate Limit",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Rate Limit": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Gate": {
+      "main": [
+        [
+          {
+            "node": "Call LLM API",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: 429 Too Many Requests",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call LLM API": {
+      "main": [
+        [
+          {
+            "node": "Respond: 200 OK",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": ""
+  },
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "f06e0bdc-61ae-47ac-b661-fda40751964e",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Initial build",
+    "description": "Seven-node workflow: webhook trigger, request normalization, sliding-window rate limit check using workflow static data, IF gate, LLM API call, 200 success response with rate limit headers, 429 response with Retry-After header."
+  }
+}

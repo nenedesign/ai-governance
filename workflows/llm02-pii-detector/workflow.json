@@ -1,0 +1,217 @@
+{
+  "updatedAt": "2026-09-06T16:08:36.689Z",
+  "createdAt": "2026-09-06T16:08:36.689Z",
+  "id": "m017FbFT4EiclGRb",
+  "name": "LLM02: PII Detector",
+  "description": "OWASP LLM02:2025 \u2014 Scans raw LLM output for PII (email, phone, SSN, SIN, credit card, postal code, IP address) and replaces matches with [REDACTED:category] placeholders before the response reaches end users.",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "5add2568-f4d7-48ab-acad-cb88a1550c91",
+      "name": "Sticky Note f1b3053b",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        336,
+        64
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "LLM02 Overview",
+            "content": "## LLM02 \u2014 PII Detector and Redactor\n\nScans raw LLM output for personally identifiable information before it reaches end users, and replaces detected PII with category-labeled placeholders.\n\n**Flow:**\n1. Receive POST with `user_id` and `llm_output` (raw model response)\n2. Normalize request fields\n3. Scan output against PII regex patterns (email, phone, SSN, SIN, credit card, postal code, IP address)\n4. Redact all matches with [REDACTED:category] placeholders\n5. Return sanitized output + redaction summary\n\n**Why post-inference:** The model may reproduce PII from its training data or context window. Prompt instructions cannot guarantee omission \u2014 output-layer filtering is required.\n\n**Risk addressed:** OWASP LLM02:2025 Sensitive Information Disclosure\n**Source:** OWASP Top 10 for LLM Applications v2.0 (March 2025)",
+            "color": 2,
+            "position": [
+              -560,
+              -200
+            ],
+            "width": 460,
+            "height": 400
+          }
+        }
+      }
+    },
+    {
+      "id": "cf8ea85b-4296-44f3-a1ec-0e2828d81cf8",
+      "name": "Sticky Note dddb0e45",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        336,
+        64
+      ],
+      "parameters": {
+        "content": {
+          "config": {
+            "name": "Setup",
+            "content": "## Setup\n\nNo credentials required. Activate the workflow and start sending LLM outputs.\n\n**Test - clean output (no redaction):**\n```bash\ncurl -X POST http://localhost:5678/webhook/llm-pii-detector \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"user_id\":\"u1\",\"llm_output\":\"The capital of France is Paris.\"}'\n```\n\n**Test - output with PII (redaction triggered):**\n```bash\ncurl -X POST http://localhost:5678/webhook/llm-pii-detector \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"user_id\":\"u1\",\"llm_output\":\"Contact John at john.doe@example.com or call 416-555-0123. His SIN is 123 456 789.\"}'\n```\n\n**Expected response with PII:**\nThe `sanitized_output` field will have email, phone, and SIN replaced. The `redaction_summary` reports counts per category.",
+            "color": 3,
+            "position": [
+              -560,
+              220
+            ],
+            "width": 460,
+            "height": 380
+          }
+        }
+      }
+    },
+    {
+      "id": "e83b5fae-95b7-4b6e-b42d-bd8200a70de0",
+      "name": "Receive LLM Output",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "llm-pii-detector",
+        "responseMode": "responseNode"
+      },
+      "webhookId": "4086d86a-fbf9-417f-80d9-6d9d88859484"
+    },
+    {
+      "id": "ed3afdcf-dcec-44c2-98a7-2b687e1a89bc",
+      "name": "Normalize Request Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        0
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f-user",
+              "name": "user_id",
+              "value": "={{ $json.body?.user_id ?? 'anonymous' }}",
+              "type": "string"
+            },
+            {
+              "id": "f-session",
+              "name": "session_id",
+              "value": "={{ $json.body?.session_id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "f-output",
+              "name": "llm_output",
+              "value": "={{ $json.body?.llm_output ?? '' }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "1b9afa21-894f-42a6-80cf-c029261c7f29",
+      "name": "Detect and Redact PII",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        0
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items = $input.all();\nconst results = [];\n\nconst patterns = [\n  {\n    name: 'email',\n    regex: /[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}/g,\n  },\n  {\n    name: 'phone_ca_us',\n    regex: /\\b(?:\\+?1[\\s.-]?)?(?:\\(?[2-9]\\d{2}\\)?[\\s.-]?)[2-9]\\d{2}[\\s.-]?\\d{4}\\b/g,\n  },\n  {\n    name: 'ssn_us',\n    regex: /\\b\\d{3}-\\d{2}-\\d{4}\\b/g,\n  },\n  {\n    name: 'sin_ca',\n    regex: /\\b\\d{3}[\\s.-]\\d{3}[\\s.-]\\d{3}\\b/g,\n  },\n  {\n    name: 'credit_card',\n    regex: /\\b(?:4\\d{3}|5[1-5]\\d{2}|6011|3[47]\\d{2})[\\s-]?\\d{4}[\\s-]?\\d{4}[\\s-]?\\d{3,4}\\b/g,\n  },\n  {\n    name: 'postal_code_ca',\n    regex: /\\b[A-Za-z]\\d[A-Za-z][\\s-]?\\d[A-Za-z]\\d\\b/g,\n  },\n  {\n    name: 'ip_address',\n    regex: /\\b(?:(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\.){3}(?:25[0-5]|2[0-4]\\d|[01]?\\d\\d?)\\b/g,\n  },\n];\n\nfor (const item of items) {\n  let text = String(item.json.llm_output || '');\n  const redactionCounts = {};\n  let totalRedactions = 0;\n\n  for (const pattern of patterns) {\n    const matches = text.match(pattern.regex);\n    if (matches && matches.length > 0) {\n      redactionCounts[pattern.name] = matches.length;\n      totalRedactions += matches.length;\n      text = text.replace(pattern.regex, `[REDACTED:${pattern.name}]`);\n    }\n  }\n\n  results.push({\n    json: {\n      user_id: item.json.user_id,\n      session_id: item.json.session_id,\n      sanitized_output: text,\n      redaction_summary: {\n        total_redactions: totalRedactions,\n        pii_detected: totalRedactions > 0,\n        categories: redactionCounts,\n      },\n    },\n  });\n}\n\nreturn results;"
+      }
+    },
+    {
+      "id": "0af3a738-7473-45db-9fe1-72a4815771f0",
+      "name": "Respond 200 with Sanitized Output",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        672,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": {
+          "status": "ok",
+          "user_id": "={{ $json.user_id }}",
+          "sanitized_output": "={{ $json.sanitized_output }}",
+          "redaction_summary": "={{ $json.redaction_summary }}"
+        },
+        "options": {
+          "responseCode": 200,
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "X-PII-Scan",
+                "value": "={{ $json.redaction_summary.pii_detected ? \"redacted\" : \"clean\" }}"
+              },
+              {
+                "name": "X-Redaction-Count",
+                "value": "={{ $json.redaction_summary.total_redactions.toString() }}"
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive LLM Output": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request Fields": {
+      "main": [
+        [
+          {
+            "node": "Detect and Redact PII",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Detect and Redact PII": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 with Sanitized Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": ""
+  },
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "8bdfa9ed-2194-44e2-ab58-d1e58e0e0058",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Initial build",
+    "description": "Post-inference PII redaction pipeline. Regex patterns cover 7 PII categories: email, CA/US phone, US SSN, Canadian SIN, credit card, Canadian postal code, IP address. Returns sanitized output with per-category redaction counts."
+  }
+}

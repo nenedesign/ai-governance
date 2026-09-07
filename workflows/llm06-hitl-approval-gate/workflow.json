@@ -1,0 +1,412 @@
+{
+  "updatedAt": "2026-09-06T14:30:57.093Z",
+  "createdAt": "2026-09-06T14:30:57.093Z",
+  "id": "Jkc2t5jkujgFNBeE",
+  "name": "LLM06: HITL Approval Gate",
+  "description": "Human-in-the-loop approval gate for high-impact agentic actions. Classifies action severity, executes low-impact actions directly, and routes high-impact actions through a Slack approval step before execution. Implements OWASP LLM06:2025 Excessive Agency ",
+  "active": false,
+  "isArchived": false,
+  "nodes": [
+    {
+      "id": "d5390a1a-b930-427f-bf10-c6fcc8825cf4",
+      "name": "Sticky Note 764e21a3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        784,
+        352
+      ],
+      "parameters": {
+        "content": "## LLM06: Excessive Agency \u2014 HITL Approval Gate\n\nEnforces human-in-the-loop approval for high-impact agentic actions before they execute (OWASP LLM06:2025).\n\n**Flow:**\n1. Agent sends an action request: `action_type`, `action_payload`, `agent_id`, `user_id`\n2. Code node classifies severity by action_type prefix\n3. Low-impact actions (read, search, list, get) execute immediately\n4. High-impact actions (delete, write, send, submit) pause and send a Slack approval request\n5. Human approves or declines in Slack within 30 minutes\n6. Approved: action executes, caller receives 200\n7. Declined or timed out: no action taken, caller receives 403",
+        "color": 2
+      }
+    },
+    {
+      "id": "920ceae6-a602-440d-9f27-f779beccf75e",
+      "name": "Sticky Note fd0ecfd1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        784,
+        352
+      ],
+      "parameters": {
+        "content": "## Prerequisites\n\n1. Create a Slack OAuth2 credential in n8n with the `chat:write` scope\n2. Set your approvals channel ID in \"Request Human Approval\" (replace `YOUR_SLACK_CHANNEL_ID`)\n3. Replace the URL placeholder in \"Execute Approved Action\" with your action endpoint\n4. Activate the workflow\n5. Test: POST to `/webhook/llm-hitl-gate` with:\n   `{\"action_type\":\"delete_record\",\"action_payload\":{\"id\":\"rec_1\"},\"user_id\":\"u1\",\"agent_id\":\"a1\"}`",
+        "color": 3
+      }
+    },
+    {
+      "id": "da04ab65-e25e-488a-b325-ad6ed878547a",
+      "name": "Sticky Note b545db10",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        784,
+        352
+      ],
+      "parameters": {
+        "content": "## Configuration\n\n**Severity classification:** Edit the `lowImpact` array in \"Classify Action Severity\" to add action type prefixes that can execute without approval.\n\n**Approval timeout:** Change `resumeAmount` in \"Request Human Approval\" (default: 30 minutes). After timeout, the workflow resumes automatically with `approved: false`.\n\n**The key principle:** The approval gate is enforced at the application layer, not in the model. A prompt instruction cannot substitute for this control.",
+        "color": 1
+      }
+    },
+    {
+      "id": "65ba67b6-27d7-483c-8cff-426cf2b77b4e",
+      "name": "Receive Agent Action Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        0,
+        192
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "llm-hitl-gate",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "webhookId": "bfda95a5-ee6f-4d56-8c47-7c153aa5ba83"
+    },
+    {
+      "id": "d490ac18-e973-4d80-abd7-000d9bec1393",
+      "name": "Normalize Request",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        224,
+        192
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "atype",
+              "name": "action_type",
+              "value": "={{ $json.body?.action_type ?? $json.action_type ?? \"unknown\" }}",
+              "type": "string"
+            },
+            {
+              "id": "apayload",
+              "name": "action_payload",
+              "value": "={{ JSON.stringify($json.body?.action_payload ?? $json.action_payload ?? {}) }}",
+              "type": "string"
+            },
+            {
+              "id": "uid",
+              "name": "user_id",
+              "value": "={{ $json.body?.user_id ?? $json.user_id ?? \"anonymous\" }}",
+              "type": "string"
+            },
+            {
+              "id": "aid",
+              "name": "agent_id",
+              "value": "={{ $json.body?.agent_id ?? $json.agent_id ?? \"agent\" }}",
+              "type": "string"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "f8848f43-dcd1-4634-b69f-c3819bd5e0ad",
+      "name": "Classify Action Severity",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        192
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const item = $input.first().json;\nconst actionType = (item.action_type || \"\").toLowerCase();\nconst lowImpact = [\"search\", \"read\", \"get\", \"list\", \"fetch\", \"query\", \"find\"];\nconst isLow = lowImpact.some(prefix => actionType.startsWith(prefix));\nreturn [{ json: {\n  action_type: item.action_type,\n  action_payload: item.action_payload,\n  user_id: item.user_id,\n  agent_id: item.agent_id,\n  severity: isLow ? \"low\" : \"high\",\n  requires_approval: !isLow\n} }];"
+      }
+    },
+    {
+      "id": "7d5b7f75-9852-46e5-86b4-b8dc259aaf70",
+      "name": "Requires Human Approval?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        672,
+        192
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.requires_approval }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "e9693bc4-17a1-4d23-9e51-7d60daaedc78",
+      "name": "Request Human Approval",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.5,
+      "position": [
+        896,
+        96
+      ],
+      "parameters": {
+        "resource": "message",
+        "operation": "sendAndWait",
+        "authentication": "oAuth2",
+        "select": "channel",
+        "channelId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "YOUR_SLACK_CHANNEL_ID"
+        },
+        "message": "={{ \":rotating_light: *Agent Action Approval Required*\\n\\n*Agent:* \" + $json.agent_id + \"\\n*Requested by:* \" + $json.user_id + \"\\n*Action:* `\" + $json.action_type + \"`\\n*Payload:* ```\" + $json.action_payload + \"```\\n\\nThis action is *irreversible*. Approve or decline below.\" }}",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Approve",
+            "buttonApprovalStyle": "primary",
+            "disapproveLabel": "Decline",
+            "buttonDisapprovalStyle": "secondary"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 30,
+              "resumeUnit": "minutes"
+            }
+          },
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "b81fe8c2-50bd-408c-bd25-2bed76250352"
+    },
+    {
+      "id": "8186d109-977e-404f-8c5f-8d7fdb28c72d",
+      "name": "Approved?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1120,
+        96
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.data?.approved }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              },
+              "rightValue": ""
+            }
+          ],
+          "combinator": "and"
+        }
+      }
+    },
+    {
+      "id": "d0c66049-eb96-43ff-ab9c-4ef603851b10",
+      "name": "Execute Approved Action",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1344,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "<__PLACEHOLDER_VALUE__Action execution endpoint \u2014 e.g. https://api.yourservice.com/actions/execute__>",
+        "sendBody": true,
+        "contentType": "json",
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"action_type\": $(\"Classify Action Severity\").item.json.action_type, \"action_payload\": $(\"Classify Action Severity\").item.json.action_payload, \"approved_by\": \"human\", \"approved_at\": $now.toISO() } }}"
+      }
+    },
+    {
+      "id": "4812a711-89d9-48c4-be9e-f596ca142fb6",
+      "name": "Respond: 200 Approved and Executed",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1568,
+        0
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"executed\", \"action_type\": $(\"Classify Action Severity\").item.json.action_type, \"severity\": \"high\", \"approval_required\": true, \"approved\": true, \"message\": \"Action approved by human reviewer and executed.\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    },
+    {
+      "id": "b58437d2-82aa-4302-b896-f40869b02d05",
+      "name": "Respond: 403 Action Declined",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1344,
+        192
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"declined\", \"action_type\": $(\"Classify Action Severity\").item.json.action_type, \"severity\": \"high\", \"approval_required\": true, \"approved\": false, \"message\": \"Action declined by human reviewer. No changes were made.\" } }}",
+        "options": {
+          "responseCode": 403
+        }
+      }
+    },
+    {
+      "id": "91b647a7-3f17-445e-9d1d-1e0dde3467f7",
+      "name": "Respond: 200 Executed Directly",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        288
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"status\": \"executed\", \"action_type\": $json.action_type, \"severity\": \"low\", \"approval_required\": false, \"message\": \"Low-impact action executed without approval.\" } }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Agent Action Request": {
+      "main": [
+        [
+          {
+            "node": "Normalize Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Request": {
+      "main": [
+        [
+          {
+            "node": "Classify Action Severity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Action Severity": {
+      "main": [
+        [
+          {
+            "node": "Requires Human Approval?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Requires Human Approval?": {
+      "main": [
+        [
+          {
+            "node": "Request Human Approval",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: 200 Executed Directly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Request Human Approval": {
+      "main": [
+        [
+          {
+            "node": "Approved?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Approved?": {
+      "main": [
+        [
+          {
+            "node": "Execute Approved Action",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: 403 Action Declined",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Approved Action": {
+      "main": [
+        [
+          {
+            "node": "Respond: 200 Approved and Executed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": {
+    "aiBuilderAssisted": true,
+    "builderVariant": "mcp",
+    "instanceId": ""
+  },
+  "nodeGroups": [],
+  "pinData": null,
+  "versionId": "614b0452-02b4-437d-8cb8-2ead775c0a1b",
+  "activeVersionId": null,
+  "versionCounter": 1,
+  "triggerCount": 0,
+  "sourceWorkflowId": null,
+  "tags": [],
+  "versionMetadata": {
+    "name": "Initial build",
+    "description": "Ten-node workflow: webhook trigger, request normalization, code-based severity classification, IF gate, Slack sendAndWait approval with 30-minute timeout, approval decision IF, HTTP Request execution placeholder, and three respondToWebhook nodes (direct, approved, declined)."
+  }
+}
